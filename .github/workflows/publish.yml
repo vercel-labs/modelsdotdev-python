@@ -1,0 +1,91 @@
+name: Publish on PyPI
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write  # required for creating tags and releases
+  id-token: write  # required for Trusted Publishing (OIDC)
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/modelsdotdev
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.14"
+
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          enable-cache: false
+
+      - run: uv venv --python 3.14
+
+      - name: Fetch upstream JSON
+        id: upstream-json
+        run: |
+          DIGEST=$(uv run python .github/scripts/fetch_upstream_json.py .tmp/models.dev-api.json)
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
+
+      - name: Generate database
+        run: uv run python -m modelsdotdev._internal.sync --source .tmp/models.dev-api.json
+
+      - name: Plan release
+        id: release-plan
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          UPSTREAM_JSON_DIGEST: ${{ steps.upstream-json.outputs.digest }}
+        with:
+          script: |
+            await require("./.github/scripts/plan_release")({github, context, core});
+
+      - name: Print release plan
+        env:
+          REASON: ${{ steps.release-plan.outputs.reason }}
+        run: printf '%s\n' "$REASON"
+
+      - name: Set package version
+        if: steps.release-plan.outputs.changed == 'true'
+        env:
+          VERSION: ${{ steps.release-plan.outputs.version }}
+        run: uv version --frozen "$VERSION"
+
+      - name: Commit version bump
+        id: version-commit
+        if: steps.release-plan.outputs.changed == 'true'
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          RELEASE_VERSION: ${{ steps.release-plan.outputs.version }}
+        with:
+          script: |
+            await require("./.github/scripts/commit_version")({github, context, core});
+
+      - name: Build
+        if: steps.release-plan.outputs.changed == 'true'
+        run: uv build
+
+      - name: Test installed wheel
+        if: steps.release-plan.outputs.changed == 'true'
+        run: sh .github/scripts/test_installed_wheel.sh
+
+      - name: Publish to PyPI
+        if: steps.release-plan.outputs.changed == 'true'
+        run: uv publish --trusted-publishing always
+
+      - name: Create GitHub release
+        if: steps.release-plan.outputs.changed == 'true'
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          RELEASE_TAG: ${{ steps.release-plan.outputs.tag }}
+          RELEASE_VERSION: ${{ steps.release-plan.outputs.version }}
+          RELEASE_COMMIT_SHA: ${{ steps.version-commit.outputs.sha }}
+        with:
+          script: |
+            await require("./.github/scripts/create_release")({github, context, core});

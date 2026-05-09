@@ -1,0 +1,53 @@
+name: Scheduled Publish Check
+
+on:
+  schedule:
+    - cron: "0 8 * * *"
+
+permissions:
+  actions: write  # required to trigger the publish workflow
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          enable-cache: false
+
+      - name: Fetch upstream JSON
+        id: upstream-json
+        run: |
+          DIGEST=$(python .github/scripts/fetch_upstream_json.py .tmp/models.dev-api.json)
+          printf 'digest=%s\n' "$DIGEST" >> "$GITHUB_OUTPUT"
+
+      - name: Plan release
+        id: release-plan
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          UPSTREAM_JSON_DIGEST: ${{ steps.upstream-json.outputs.digest }}
+        with:
+          script: |
+            await require("./.github/scripts/plan_release")({github, context, core});
+
+      - name: Print release plan
+        env:
+          REASON: ${{ steps.release-plan.outputs.reason }}
+        run: printf '%s\n' "$REASON"
+
+      - name: Trigger publish workflow
+        if: steps.release-plan.outputs.changed == 'true'
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: "publish.yml",
+              ref: context.ref,
+            });

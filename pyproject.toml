@@ -1,0 +1,115 @@
+[project]
+name = "modelsdotdev"
+version = "0.0.0"
+description = "An offline models.dev database bundle exposed as a typed Python module."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.12"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Typing :: Typed",
+]
+
+[build-system]
+requires = ["uv_build>=0.11.0,<0.12"]
+build-backend = "build_backend"
+backend-path = ["."]
+
+[tool.uv.build-backend]
+module-root = "src"
+source-include = ["build_backend.py"]
+
+[dependency-groups]
+dev = [
+    "ty~=0.0.35",
+    "mypy~=2.1.0",
+    "poethepoet~=0.37.0",
+    "pytest~=9.0.3",
+    "ruff~=0.15.2",
+]
+
+[tool.poe.tasks]
+generate-db = "python -m modelsdotdev._internal.sync"
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+mypy_path = ["src"]
+packages = ["modelsdotdev", "tests"]
+explicit_package_bases = true
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+disable_error_code = ["unused-ignore"]
+
+[tool.ty.environment]
+python-version = "3.12"
+root = ["./src", "./"]
+
+[tool.ruff]
+line-length = 80
+indent-width = 4
+target-version = "py312"
+exclude = [
+    ".github",
+    ".git",
+    "build",
+    "dist",
+    ".eggs",
+]
+
+[tool.ruff.lint]
+preview = true
+extend-select = [
+    "B",    # flake8-bugbear
+    "C4",   # flake8-comprehensions
+    "D",    # pydocstyle
+    "E",    # error
+    "ERA",  # flake8-eradicate
+    "F",    # pyflakes
+    "FBT",  # flake8-boolean-trap
+    "G",    # flake8-logging-format
+    "I",    # isort
+    "N",    # pep8-naming
+    "PGH",  # pygrep-hooks
+    "PIE",  # flake8-pie
+    "PLE",  # pylint-error
+    "PLW",  # pylint-warning
+    "PLC",  # pylint-convention
+    "RUF",  # ruff specific
+    "SIM",  # flake8-simplify
+    "T20",  # flake8-print
+    "TC",   # flake8-type-checking
+    "UP",   # pyupgrade
+    "W",    # warning
+]
+
+extend-ignore = [
+    "D203",    # incorrect-blank-line-before-class
+    "D213",    # multi-line-summary-second-line
+    "F541",    # f-string-missing-placeholders
+    "PLW1514", # unspecified-encoding (UTF-8 is Python 3 default)
+    "PLW2901", # redefined-loop-name (intentional pattern for line processing)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = [
+    "D",       # docstrings not required in tests
+    "PLC2701", # allow private imports in tests
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

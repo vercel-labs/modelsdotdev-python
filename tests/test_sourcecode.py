@@ -1,0 +1,98 @@
+import importlib.util
+import os
+import subprocess
+import sys
+import unittest
+
+from modelsdotdev._internal.dist import PROJECT_ROOT
+
+
+class TestLint(unittest.TestCase):
+    def test_cqa_ruff_lint_check(self) -> None:
+        if not importlib.util.find_spec("ruff"):
+            raise unittest.SkipTest("ruff is not installed") from None
+
+        try:
+            subprocess.run(
+                [sys.executable, "-m", "ruff", "check"],
+                check=True,
+                capture_output=True,
+                cwd=PROJECT_ROOT,
+            )
+        except subprocess.CalledProcessError as ex:
+            output = ex.output.decode()
+            raise AssertionError(f"ruff validation failed:\n{output}") from None
+
+    def test_cqa_ruff_format_check(self) -> None:
+        if not importlib.util.find_spec("ruff"):
+            raise unittest.SkipTest("ruff is not installed")
+
+        try:
+            subprocess.run(
+                [sys.executable, "-m", "ruff", "format", "--check", "."],
+                check=True,
+                capture_output=True,
+                cwd=PROJECT_ROOT,
+            )
+        except subprocess.CalledProcessError as ex:
+            output = ex.output.decode()
+            raise AssertionError(
+                f"ruff format validation failed:\n{output}"
+            ) from None
+
+    def test_cqa_typecheck_mypy(self) -> None:
+        config_path = PROJECT_ROOT / "pyproject.toml"
+        if not os.path.exists(config_path):
+            raise RuntimeError("could not locate pyproject.toml file")
+
+        if not importlib.util.find_spec("mypy"):
+            raise unittest.SkipTest("mypy is not installed") from None
+
+        try:
+            subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "mypy",
+                    "--config-file",
+                    config_path,
+                ],
+                check=True,
+                capture_output=True,
+                cwd=PROJECT_ROOT,
+            )
+        except subprocess.CalledProcessError as ex:
+            output = ex.stdout.decode()
+            if ex.stderr:
+                output += "\n\n" + ex.stderr.decode()
+            raise AssertionError(f"mypy validation failed:\n{output}") from None
+
+    def test_cqa_typecheck_ty(self) -> None:
+        config_path = PROJECT_ROOT / "pyproject.toml"
+        if not os.path.exists(config_path):
+            raise RuntimeError("could not locate pyproject.toml file")
+
+        if not importlib.util.find_spec("ty"):
+            raise unittest.SkipTest("ty is not installed") from None
+
+        try:
+            subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "ty",
+                    "check",
+                ],
+                check=True,
+                capture_output=True,
+                cwd=PROJECT_ROOT,
+            )
+        except subprocess.CalledProcessError as ex:
+            output = ex.stdout.decode()
+            if ex.stderr:
+                output += "\n\n" + ex.stderr.decode()
+            raise AssertionError(f"ty validation failed:\n{output}") from None
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)
