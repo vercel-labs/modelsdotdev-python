@@ -9,31 +9,35 @@ module.exports = async ({ github, context, core }) => {
   const repo = context.repo.repo;
   const branch = context.ref.replace(/^refs\/heads\//, "");
   const version = process.env.RELEASE_VERSION;
-  const pyproject = fs.readFileSync("pyproject.toml", "utf8");
+
+  const files = ["pyproject.toml", "uv.lock"];
 
   const base = await github.rest.git.getCommit({
     owner,
     repo,
     commit_sha: context.sha,
   });
-  const blob = await github.rest.git.createBlob({
-    owner,
-    repo,
-    content: pyproject,
-    encoding: "utf-8",
-  });
+  const treeEntries = [];
+  for (const path of files) {
+    const blob = await github.rest.git.createBlob({
+      owner,
+      repo,
+      content: fs.readFileSync(path, "utf8"),
+      encoding: "utf-8",
+    });
+    treeEntries.push({
+      path,
+      mode: "100644",
+      type: "blob",
+      sha: blob.data.sha,
+    });
+  }
+
   const tree = await github.rest.git.createTree({
     owner,
     repo,
     base_tree: base.data.tree.sha,
-    tree: [
-      {
-        path: "pyproject.toml",
-        mode: "100644",
-        type: "blob",
-        sha: blob.data.sha,
-      },
-    ],
+    tree: treeEntries,
   });
   const commit = await github.rest.git.createCommit({
     owner,

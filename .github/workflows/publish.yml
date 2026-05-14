@@ -55,7 +55,7 @@ jobs:
         if: steps.release-plan.outputs.changed == 'true'
         env:
           VERSION: ${{ steps.release-plan.outputs.version }}
-        run: uv version --frozen "$VERSION"
+        run: uv version --no-sync "$VERSION"
 
       - name: Commit version bump
         id: version-commit
