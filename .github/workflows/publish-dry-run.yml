@@ -1,0 +1,97 @@
+name: Publish Approval Dry Run
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    name: Plan dry run
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      api_url_approval_required: ${{ steps.api-url-check.outputs.approval_required }}
+      api_url_change_count: ${{ steps.api-url-check.outputs.change_count }}
+      api_url_diff_summary: ${{ steps.api-url-check.outputs.summary }}
+      run_url: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Prepare dry-run baseline
+        run: |
+          python .github/scripts/create_api_url_dry_run_baseline.py \
+            .tmp/api-url-dry-run-baseline.sqlite
+
+      - name: Compute fixture digest
+        id: fixture
+        run: |
+          DIGEST=$(python - <<'PY'
+          import hashlib
+          from pathlib import Path
+
+          payload = Path(".github/fixtures/api-url-compromise.json").read_bytes()
+          print(hashlib.sha256(payload).hexdigest())
+          PY
+          )
+          printf 'digest=%s\n' "$DIGEST" >> "$GITHUB_OUTPUT"
+
+      - name: Check fixture API URL changes
+        id: api-url-check
+        env:
+          FIXTURE_DIGEST: ${{ steps.fixture.outputs.digest }}
+        run: |
+          python .github/scripts/check_upstream_api_urls.py \
+            .github/fixtures/api-url-compromise.json \
+            --baseline-db .tmp/api-url-dry-run-baseline.sqlite \
+            --baseline-version dry-run-baseline \
+            --digest "$FIXTURE_DIGEST" \
+            --json-output .tmp/api-url-diff.json \
+            --markdown-output .tmp/api-url-diff.md
+
+      - name: Print upstream API URL check
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          with Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a") as summary:
+              summary.write(Path(".tmp/api-url-diff.md").read_text())
+              summary.write("\n")
+          PY
+
+  api_url_change_approval:
+    name: Approve dry-run API URL changes
+    needs: plan
+    if: ${{ needs.plan.outputs.api_url_approval_required == 'true' }}
+    runs-on: ubuntu-latest
+    permissions: {}
+    # This uses the same protected environment as the real publish workflow,
+    # but this dry-run workflow never builds or publishes a package.
+    environment:
+      name: pypi-api-url-change
+      url: ${{ needs.plan.outputs.run_url }}
+    steps:
+      - name: Approval recorded
+        env:
+          CHANGE_COUNT: ${{ needs.plan.outputs.api_url_change_count }}
+        run: |
+          printf '%s\n' \
+            "Approved dry-run API URL changes: $CHANGE_COUNT change(s)"
+
+  dry_run_publish:
+    name: Dry-run publish continuation
+    needs:
+      - plan
+      - api_url_change_approval
+    if: ${{ always() && !cancelled() && (needs.plan.outputs.api_url_approval_required != 'true' || needs.api_url_change_approval.result == 'success') }}
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Confirm dry run completed
+        run: |
+          printf '%s\n' "Dry run complete. No build, upload, tag, or release was created."

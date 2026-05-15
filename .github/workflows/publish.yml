@@ -4,12 +4,99 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write  # required for creating tags and releases
-  id-token: write  # required for Trusted Publishing (OIDC)
+  contents: read
 
 jobs:
-  publish:
+  plan:
+    name: Plan publish
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      api_url_approval_required: ${{ steps.api-url-check.outputs.approval_required }}
+      api_url_change_count: ${{ steps.api-url-check.outputs.change_count }}
+      api_url_diff_summary: ${{ steps.api-url-check.outputs.summary }}
+      changed: ${{ steps.release-plan.outputs.changed }}
+      reason: ${{ steps.release-plan.outputs.reason }}
+      run_url: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      tag: ${{ steps.release-plan.outputs.tag }}
+      upstream_json_digest: ${{ steps.upstream-json.outputs.digest }}
+      version: ${{ steps.release-plan.outputs.version }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Fetch upstream JSON
+        id: upstream-json
+        run: |
+          DIGEST=$(python .github/scripts/fetch_upstream_json.py .tmp/models.dev-api.json)
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
+
+      - name: Check upstream API URL changes
+        id: api-url-check
+        env:
+          UPSTREAM_JSON_DIGEST: ${{ steps.upstream-json.outputs.digest }}
+        run: |
+          python .github/scripts/check_upstream_api_urls.py \
+            .tmp/models.dev-api.json \
+            --digest "$UPSTREAM_JSON_DIGEST" \
+            --json-output .tmp/api-url-diff.json \
+            --markdown-output .tmp/api-url-diff.md
+
+      - name: Print upstream API URL check
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          with Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a") as summary:
+              summary.write(Path(".tmp/api-url-diff.md").read_text())
+              summary.write("\n")
+          PY
+
+      - name: Plan release
+        id: release-plan
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          UPSTREAM_JSON_DIGEST: ${{ steps.upstream-json.outputs.digest }}
+        with:
+          script: |
+            await require("./.github/scripts/plan_release")({github, context, core});
+
+      - name: Print release plan
+        env:
+          REASON: ${{ steps.release-plan.outputs.reason }}
+          VERSION: ${{ steps.release-plan.outputs.version }}
+        run: printf '%s\n' "$REASON"
+
+  api_url_change_approval:
+    name: Approve upstream API URL changes
+    needs: plan
+    if: ${{ needs.plan.outputs.changed == 'true' && needs.plan.outputs.api_url_approval_required == 'true' }}
+    runs-on: ubuntu-latest
+    permissions: {}
+    # The protected environment is the manual supply-chain gate. Its URL points
+    # reviewers to the plan job summary, where the API URL diff is rendered.
+    environment:
+      name: pypi-api-url-change
+      url: ${{ needs.plan.outputs.run_url }}
+    steps:
+      - name: Approval recorded
+        env:
+          VERSION: ${{ needs.plan.outputs.version }}
+        run: printf '%s\n' "Approved upstream API URL changes for $VERSION"
+
+  publish:
+    name: Publish
+    needs:
+      - plan
+      - api_url_change_approval
+    if: ${{ always() && !cancelled() && needs.plan.outputs.changed == 'true' && (needs.plan.outputs.api_url_approval_required != 'true' || needs.api_url_change_approval.result == 'success') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # required for creating tags and releases
+      id-token: write  # required for Trusted Publishing (OIDC)
     environment:
       name: pypi
       url: https://pypi.org/p/modelsdotdev
@@ -30,45 +117,35 @@ jobs:
 
       - name: Fetch upstream JSON
         id: upstream-json
+        env:
+          EXPECTED_DIGEST: ${{ needs.plan.outputs.upstream_json_digest }}
         run: |
           DIGEST=$(uv run python .github/scripts/fetch_upstream_json.py .tmp/models.dev-api.json)
+          if [ "$DIGEST" != "$EXPECTED_DIGEST" ]; then
+            printf '%s\n' "upstream JSON digest changed after approval planning"
+            printf '%s\n' "planned: $EXPECTED_DIGEST"
+            printf '%s\n' "current: $DIGEST"
+            exit 1
+          fi
           echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
 
-      - name: Plan release
-        id: release-plan
-        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
-        env:
-          UPSTREAM_JSON_DIGEST: ${{ steps.upstream-json.outputs.digest }}
-        with:
-          script: |
-            await require("./.github/scripts/plan_release")({github, context, core});
-
-      - name: Print release plan
-        env:
-          REASON: ${{ steps.release-plan.outputs.reason }}
-        run: printf '%s\n' "$REASON"
-
       - name: Build
-        if: steps.release-plan.outputs.changed == 'true'
         env:
           MODELDOTDEV_BUILD_SOURCE: .tmp/models.dev-api.json
-          UV_DYNAMIC_VERSIONING_BYPASS: ${{ steps.release-plan.outputs.version }}
+          UV_DYNAMIC_VERSIONING_BYPASS: ${{ needs.plan.outputs.version }}
         run: uv build
 
       - name: Test installed wheel
-        if: steps.release-plan.outputs.changed == 'true'
         run: sh .github/scripts/test_installed_wheel.sh
 
       - name: Publish to PyPI
-        if: steps.release-plan.outputs.changed == 'true'
         run: uv publish --trusted-publishing always
 
       - name: Create GitHub release
-        if: steps.release-plan.outputs.changed == 'true'
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
-          RELEASE_TAG: ${{ steps.release-plan.outputs.tag }}
-          RELEASE_VERSION: ${{ steps.release-plan.outputs.version }}
+          RELEASE_TAG: ${{ needs.plan.outputs.tag }}
+          RELEASE_VERSION: ${{ needs.plan.outputs.version }}
           RELEASE_COMMIT_SHA: ${{ github.sha }}
           UPSTREAM_JSON_DIGEST: ${{ steps.upstream-json.outputs.digest }}
         with:
