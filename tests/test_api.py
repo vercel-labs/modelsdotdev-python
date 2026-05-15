@@ -59,6 +59,7 @@ def test_model_iteration_and_lookup_use_real_database() -> None:
         assert model.provider_id in providers_by_id
         assert model.qualified_id == f"{model.provider_id}:{model.id}"
         assert get_model_by_id(model.qualified_id) == model
+        assert get_model_by_id(f"{model.provider_id}/{model.id}") == model
         assert (
             providers_by_id[model.provider_id].get_model_by_id(model.id)
             == model
