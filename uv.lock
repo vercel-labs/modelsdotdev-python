@@ -124,7 +124,7 @@ wheels = [
 
 [[package]]
 name = "modelsdotdev"
-version = "0.20260514.0"
+version = "0.20260515.0"
 source = { editable = "." }
 
 [package.dev-dependencies]

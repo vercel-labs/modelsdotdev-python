@@ -1,6 +1,6 @@
 [project]
 name = "modelsdotdev"
-version = "0.20260514.0"
+version = "0.20260515.0"
 description = "An offline models.dev database bundle exposed as a typed Python module."
 readme = "README.md"
 license = "MIT"
