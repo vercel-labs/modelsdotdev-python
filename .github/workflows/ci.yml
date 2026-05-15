@@ -28,7 +28,7 @@ jobs:
           advanced-security: false
           annotations: true
 
-  lint-test-and-build:
+  test:
     name: test (py${{ matrix.python-version }})
     runs-on: ubuntu-latest
     environment: ci
@@ -47,3 +47,18 @@ jobs:
 
       - name: Run tests, lint and typecheck
         run: uv run pytest
+
+  ci-conclusion:
+    name: CI Conclusion
+    if: ${{ !cancelled() }}
+    needs:
+      - test
+      - zizmor
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail if any dependency did not succeed
+        if: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped') }}
+        run: exit 1
+
+      - name: Success
+        run: echo "all CI jobs passed"
