@@ -4,6 +4,7 @@ module.exports = async ({ github, context, core }) => {
   const tag = process.env.RELEASE_TAG;
   const version = process.env.RELEASE_VERSION;
   const commit = process.env.RELEASE_COMMIT_SHA;
+  const digest = process.env.UPSTREAM_JSON_DIGEST;
 
   try {
     await github.rest.git.getRef({ owner, repo, ref: `tags/${tag}` });
@@ -11,11 +12,19 @@ module.exports = async ({ github, context, core }) => {
     if (error.status !== 404) {
       throw error;
     }
+    const annotatedTag = await github.rest.git.createTag({
+      owner,
+      repo,
+      tag,
+      message: `modelsdotdev ${version}\n\nUpstream JSON SHA256: ${digest}\n`,
+      object: commit,
+      type: "commit",
+    });
     await github.rest.git.createRef({
       owner,
       repo,
       ref: `refs/tags/${tag}`,
-      sha: commit,
+      sha: annotatedTag.data.sha,
     });
   }
 

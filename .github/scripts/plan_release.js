@@ -1,29 +1,3 @@
-function getCurrentVersion() {
-  let output;
-  try {
-    output = require("child_process").execFileSync(
-      "uv",
-      ["version", "--short"],
-      {
-        encoding: "utf8",
-        stdio: ["ignore", "pipe", "pipe"],
-      },
-    );
-  } catch (error) {
-    const stderr = error.stderr?.toString().trim();
-    const detail = stderr ? `: ${stderr}` : "";
-    throw new Error(`uv version --short failed${detail}`);
-  }
-
-  const version = output.trim();
-  if (!/^\d+\.\d+\.\d+$/.test(version)) {
-    throw new Error(
-      `uv version --short returned unexpected output: ${JSON.stringify(output)}`,
-    );
-  }
-  return version;
-}
-
 module.exports = async ({github, context, core}) => {
 
   const owner = context.repo.owner;
@@ -32,10 +6,6 @@ module.exports = async ({github, context, core}) => {
   const today = new Date().toISOString().slice(0, 10).replaceAll("-", "");
   const datedVersionPattern = /^v?(\d+)\.(\d{8})\.(\d+)$/;
   const digestPattern = /Upstream JSON SHA256:\s*([a-f0-9]{64})/i;
-  const commitPattern = /Source commit SHA:\s*([a-f0-9]{40})/i;
-
-  const currentVersion = getCurrentVersion();
-  const currentMajor = Number.parseInt(currentVersion.split(".")[0], 10) || 0;
 
   let latestDigest = "";
   let latestCommit = "";
@@ -50,14 +20,13 @@ module.exports = async ({github, context, core}) => {
       latestMajor = Number.parseInt(releaseVersion[1], 10);
     }
     latestDigest = release.data.body?.match(digestPattern)?.[1] ?? "";
-    latestCommit = release.data.body?.match(commitPattern)?.[1] ?? "";
   } catch (error) {
     if (error.status !== 404) {
       throw error;
     }
   }
 
-  if (!latestCommit && latestReleaseTag) {
+  if (latestReleaseTag) {
     const ref = await github.rest.git.getRef({
       owner,
       repo,
@@ -70,6 +39,7 @@ module.exports = async ({github, context, core}) => {
         tag_sha: ref.data.object.sha,
       });
       latestCommit = tag.data.object.sha;
+      latestDigest ||= tag.data.message.match(digestPattern)?.[1] ?? "";
     } else {
       latestCommit = ref.data.object.sha;
     }
@@ -98,7 +68,7 @@ module.exports = async ({github, context, core}) => {
     }
   }
 
-  const major = Math.max(currentMajor, latestMajor);
+  const major = latestMajor;
   const usedPatches = new Set();
   for (const tag of tags) {
     const match = tag.name.match(datedVersionPattern);
@@ -133,10 +103,15 @@ module.exports = async ({github, context, core}) => {
     patch += 1;
   }
 
+  const manuallyTriggered = context.eventName === "workflow_dispatch";
   const digestChanged = !latestDigest || digest.toLowerCase() !== latestDigest.toLowerCase();
   const commitChanged = !latestCommit || latestCommit !== context.sha;
-  const changed = digestChanged || commitChanged;
+  const changed = manuallyTriggered || digestChanged || commitChanged;
   const reasons = [];
+
+  if (manuallyTriggered) {
+    reasons.push("manual publish requested");
+  }
 
   if (digestChanged) {
     reasons.push(

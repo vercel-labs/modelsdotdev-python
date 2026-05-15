@@ -1,6 +1,6 @@
 [project]
 name = "modelsdotdev"
-version = "0.20260515.0"
+dynamic = ["version"]
 description = "An offline models.dev database bundle exposed as a typed Python module."
 readme = "README.md"
 license = "MIT"
@@ -21,21 +21,37 @@ classifiers = [
 ]
 
 [build-system]
-requires = ["uv_build>=0.11.0,<0.12"]
-build-backend = "build_backend"
-backend-path = ["."]
+requires = ["hatchling>=1.28.0", "uv-dynamic-versioning>=0.14.0"]
+build-backend = "hatchling.build"
 
-[tool.uv.build-backend]
-module-root = "src"
-source-include = ["build_backend.py"]
+[tool.hatch.version]
+source = "uv-dynamic-versioning"
+
+[tool.uv-dynamic-versioning]
+fallback-version = "0.0.0"
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/LICENSE",
+    "/README.md",
+    "/hatch_build.py",
+    "/src",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/modelsdotdev"]
+
+[tool.hatch.build.hooks.custom]
+path = "hatch_build.py"
 
 [dependency-groups]
 dev = [
-    "ty~=0.0.35",
+    "hatchling~=1.28.0",
     "mypy~=2.1.0",
     "poethepoet~=0.37.0",
     "pytest~=9.0.3",
     "ruff~=0.15.2",
+    "ty~=0.0.35",
 ]
 
 [tool.poe.tasks]

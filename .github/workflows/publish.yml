@@ -34,9 +34,6 @@ jobs:
           DIGEST=$(uv run python .github/scripts/fetch_upstream_json.py .tmp/models.dev-api.json)
           echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
 
-      - name: Generate database
-        run: uv run python -m modelsdotdev._internal.sync --source .tmp/models.dev-api.json
-
       - name: Plan release
         id: release-plan
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
@@ -51,24 +48,11 @@ jobs:
           REASON: ${{ steps.release-plan.outputs.reason }}
         run: printf '%s\n' "$REASON"
 
-      - name: Set package version
-        if: steps.release-plan.outputs.changed == 'true'
-        env:
-          VERSION: ${{ steps.release-plan.outputs.version }}
-        run: uv version --no-sync "$VERSION"
-
-      - name: Commit version bump
-        id: version-commit
-        if: steps.release-plan.outputs.changed == 'true'
-        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
-        env:
-          RELEASE_VERSION: ${{ steps.release-plan.outputs.version }}
-        with:
-          script: |
-            await require("./.github/scripts/commit_version")({github, context, core});
-
       - name: Build
         if: steps.release-plan.outputs.changed == 'true'
+        env:
+          MODELDOTDEV_BUILD_SOURCE: .tmp/models.dev-api.json
+          UV_DYNAMIC_VERSIONING_BYPASS: ${{ steps.release-plan.outputs.version }}
         run: uv build
 
       - name: Test installed wheel
@@ -85,7 +69,8 @@ jobs:
         env:
           RELEASE_TAG: ${{ steps.release-plan.outputs.tag }}
           RELEASE_VERSION: ${{ steps.release-plan.outputs.version }}
-          RELEASE_COMMIT_SHA: ${{ steps.version-commit.outputs.sha }}
+          RELEASE_COMMIT_SHA: ${{ github.sha }}
+          UPSTREAM_JSON_DIGEST: ${{ steps.upstream-json.outputs.digest }}
         with:
           script: |
             await require("./.github/scripts/create_release")({github, context, core});
