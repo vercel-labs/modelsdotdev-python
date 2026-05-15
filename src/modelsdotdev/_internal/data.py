@@ -140,9 +140,6 @@ class ModelRef:
     provider_id: str | None
     """Provider ID, if the model ID is provider-qualified."""
 
-    vendor_id: str | None
-    """Model producer ID, if known."""
-
     model_id: str
     """Provider-specific model ID."""
 
@@ -266,21 +263,12 @@ def parse_model_id(model_id: str) -> ModelRef:
     """Parse a possibly provider-qualified model ID."""
     if not model_id:
         raise ValueError("model_id must not be empty")
-
-    for separator in (":", "/"):
-        if separator not in model_id:
-            continue
-        provider_id, provider_model_id = model_id.split(separator, 1)
-        if not provider_id or not provider_model_id:
-            raise ValueError("model_id must include provider and model IDs")
-        if get_provider_by_id(provider_id) is not None:
-            return ModelRef(
-                provider_id=provider_id,
-                vendor_id=None,
-                model_id=provider_model_id,
-            )
-
-    return ModelRef(provider_id=None, vendor_id=None, model_id=model_id)
+    prefix, sep, suffix = model_id.partition(":")
+    if sep:
+        if not prefix or not suffix:
+            raise ValueError(f"malformed model_id: {model_id}")
+        return ModelRef(provider_id=prefix, model_id=suffix)
+    return ModelRef(provider_id=None, model_id=prefix)
 
 
 def get_model_by_id(model_id: str) -> Model | None:

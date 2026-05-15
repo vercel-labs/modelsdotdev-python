@@ -87,30 +87,33 @@ def test_provider_model_iteration_matches_global_models() -> None:
 def test_parse_model_id_handles_qualified_and_unqualified_ids() -> None:
     assert parse_model_id("openai:gpt-5") == ModelRef(
         provider_id="openai",
-        vendor_id=None,
         model_id="gpt-5",
     )
-    assert parse_model_id("openrouter/openai/gpt-oss-120b") == ModelRef(
-        provider_id="openrouter",
-        vendor_id=None,
-        model_id="openai/gpt-oss-120b",
+    assert parse_model_id("provider:foo/bar") == ModelRef(
+        provider_id="provider",
+        model_id="foo/bar",
     )
     assert parse_model_id("amazon-bedrock:amazon.nova-pro-v1:0") == ModelRef(
         provider_id="amazon-bedrock",
-        vendor_id=None,
         model_id="amazon.nova-pro-v1:0",
     )
-    bedrock_model_id = "anthropic.claude-opus-4-5-20251101-v1:0"
-    assert parse_model_id(bedrock_model_id) == ModelRef(
+    assert parse_model_id("foo/bar/baz") == ModelRef(
         provider_id=None,
-        vendor_id=None,
-        model_id=bedrock_model_id,
+        model_id="foo/bar/baz",
+    )
+    assert parse_model_id("gpt-5") == ModelRef(
+        provider_id=None,
+        model_id="gpt-5",
     )
 
 
 @pytest.mark.parametrize(
     "model_id",
-    ["", ":gpt-5", "openai:", "/gpt-5", "openai/"],
+    [
+        "",
+        "openai:",
+        ":gpt-5",
+    ],
 )
 def test_parse_model_id_rejects_empty_parts(model_id: str) -> None:
     with pytest.raises(ValueError, match="model_id"):

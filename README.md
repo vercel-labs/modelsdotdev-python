@@ -7,7 +7,7 @@ Python module.
 from modelsdotdev import get_model_by_id, get_provider_by_name
 
 provider = get_provider_by_name("OpenAI")
-model = get_model_by_id("openai/gpt-5.5")
+model = get_model_by_id("openai:gpt-5.5")
 
 if provider is not None:
     provider_model = provider.get_model_by_id("gpt-5.5")
