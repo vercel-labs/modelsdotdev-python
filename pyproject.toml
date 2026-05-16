@@ -63,7 +63,7 @@ strict = true
 warn_return_any = true
 warn_unused_configs = true
 mypy_path = ["src"]
-packages = ["modelsdotdev", "tests"]
+files = ["src/modelsdotdev", "tests", ".github/scripts"]
 explicit_package_bases = true
 
 [[tool.mypy.overrides]]
