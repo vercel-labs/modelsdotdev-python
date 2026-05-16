@@ -70,6 +70,15 @@ jobs:
           VERSION: ${{ steps.release-plan.outputs.version }}
         run: printf '%s\n' "$REASON"
 
+      - name: Upload validated upstream JSON
+        if: steps.release-plan.outputs.changed == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: upstream-json-${{ github.run_id }}
+          path: .tmp/models.dev-api.json
+          if-no-files-found: error
+          retention-days: 7
+
   api_url_change_approval:
     name: Approve upstream API URL changes
     needs: plan
@@ -115,16 +124,29 @@ jobs:
 
       - run: uv venv --python 3.14
 
-      - name: Fetch upstream JSON
+      - name: Download validated upstream JSON
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: upstream-json-${{ github.run_id }}
+          path: .tmp
+
+      - name: Verify validated upstream JSON
         id: upstream-json
         env:
           EXPECTED_DIGEST: ${{ needs.plan.outputs.upstream_json_digest }}
         run: |
-          DIGEST=$(uv run python .github/scripts/fetch_upstream_json.py .tmp/models.dev-api.json)
+          DIGEST=$(python - <<'PY'
+          import hashlib
+          from pathlib import Path
+
+          payload = Path(".tmp/models.dev-api.json").read_bytes()
+          print(hashlib.sha256(payload).hexdigest())
+          PY
+          )
           if [ "$DIGEST" != "$EXPECTED_DIGEST" ]; then
-            printf '%s\n' "upstream JSON digest changed after approval planning"
+            printf '%s\n' "validated upstream JSON artifact digest mismatch"
             printf '%s\n' "planned: $EXPECTED_DIGEST"
-            printf '%s\n' "current: $DIGEST"
+            printf '%s\n' "artifact: $DIGEST"
             exit 1
           fi
           echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
