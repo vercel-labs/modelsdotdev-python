@@ -14,6 +14,11 @@ if provider is not None:
     provider_models = list(provider.iter_models())
 ```
 
+Provider display names are not unique upstream, so `get_provider_by_name`
+returns `None` when a name is shared by more than one provider. Use
+`get_providers_by_name` to retrieve every match, or `get_provider_by_id` for an
+unambiguous lookup.
+
 ## Development
 
 Install dependencies and run the test suite with uv:
