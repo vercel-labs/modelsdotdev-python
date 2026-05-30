@@ -1,5 +1,4 @@
 import sqlite3
-from collections import Counter
 from contextlib import closing
 
 import pytest
@@ -20,7 +19,6 @@ from modelsdotdev import (
     get_model_by_id,
     get_provider_by_id,
     get_provider_by_name,
-    get_providers_by_name,
     iter_models,
     iter_providers,
     parse_model_id,
@@ -36,41 +34,17 @@ def test_provider_iteration_and_lookup_use_real_database() -> None:
         key=lambda provider: provider.name.lower(),
     )
     assert len({provider.id for provider in providers}) == len(providers)
-
-    # Upstream no longer guarantees provider names are unique.
-    name_counts = Counter(provider.name.lower() for provider in providers)
-
-    # A provider whose name is unique (case-insensitively) resolves by name.
-    unique = next(
-        provider
-        for provider in providers
-        if name_counts[provider.name.lower()] == 1
+    assert len({provider.name.lower() for provider in providers}) == len(
+        providers,
     )
-    assert isinstance(unique, Provider)
-    assert get_provider_by_id(unique.id) == unique
-    assert get_provider_by_name(unique.name) == unique
-    assert get_provider_by_name(unique.name.upper()) == unique
-    assert get_providers_by_name(unique.name) == [unique]
 
-    # An ambiguous name (shared by 2+ providers) resolves to None via the
-    # singular getter but is fully enumerated by the plural getter.
-    ambiguous = next(
-        (
-            provider.name
-            for provider in providers
-            if name_counts[provider.name.lower()] > 1
-        ),
-        None,
-    )
-    if ambiguous is not None:
-        matches = get_providers_by_name(ambiguous)
-        assert len(matches) == name_counts[ambiguous.lower()]
-        assert matches == get_providers_by_name(ambiguous.upper())
-        assert get_provider_by_name(ambiguous) is None
-
+    provider = providers[0]
+    assert isinstance(provider, Provider)
+    assert get_provider_by_id(provider.id) == provider
+    assert get_provider_by_name(provider.name) == provider
+    assert get_provider_by_name(provider.name.upper()) == provider
     assert get_provider_by_id("missing-provider") is None
     assert get_provider_by_name("missing provider") is None
-    assert get_providers_by_name("missing provider") == []
 
 
 def test_model_iteration_and_lookup_use_real_database() -> None:

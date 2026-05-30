@@ -239,31 +239,15 @@ DATABASE_PATH_ENV = "MODELDOTDEV_DATABASE_PATH"
 DB_PATH = Path(__file__).parents[1] / "_db.sqlite"
 
 
-def get_providers_by_name(name: str) -> list[Provider]:
-    """Return all providers with the given display name, case-insensitively.
-
-    Upstream no longer guarantees provider names are unique, so a name may
-    resolve to more than one provider. Results are ordered by provider ID.
-    """
-    with closing(_connect()) as connection:
-        rows = connection.execute(
-            f"SELECT {PROVIDER_COLUMNS} FROM providers "
-            "WHERE name = ? COLLATE NOCASE ORDER BY id",
-            (name,),
-        ).fetchall()
-        return [_provider_from_row(row) for row in rows]
-
-
 def get_provider_by_name(name: str) -> Provider | None:
-    """Return the sole provider with the given display name, else ``None``.
-
-    Matching is case-insensitive. When the name is ambiguous (shared by two or
-    more providers) ``None`` is returned, since there is no single correct
-    match; use :func:`get_providers_by_name` or look up by ID via
-    :func:`get_provider_by_id` instead.
-    """
-    providers = get_providers_by_name(name)
-    return providers[0] if len(providers) == 1 else None
+    """Return a provider by display name, using case-insensitive matching."""
+    with closing(_connect()) as connection:
+        row = connection.execute(
+            f"SELECT {PROVIDER_COLUMNS} FROM providers "
+            "WHERE name = ? COLLATE NOCASE",
+            (name,),
+        ).fetchone()
+        return None if row is None else _provider_from_row(row)
 
 
 def get_provider_by_id(provider_id: str) -> Provider | None:
