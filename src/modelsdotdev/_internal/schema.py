@@ -87,7 +87,7 @@ PROVIDERS = Table(
         Column(name="env", definition="TEXT NOT NULL"),
     ),
     indexes=(
-        "CREATE INDEX providers_name_nocase_idx "
+        "CREATE UNIQUE INDEX providers_name_nocase_idx "
         "ON providers(name COLLATE NOCASE);",
     ),
 )
