@@ -322,16 +322,23 @@ def compare_api_urls(
     ):
         previous_url = baseline.model_urls.get((provider_id, model_id))
         current_url = current.model_urls.get((provider_id, model_id))
-        if previous_url != current_url:
-            changes.append(
-                ApiUrlChange(
-                    kind="Model override",
-                    provider_id=provider_id,
-                    model_id=model_id,
-                    previous_url=previous_url,
-                    current_url=current_url,
-                ),
-            )
+        if previous_url == current_url:
+            continue
+        # A newly-introduced override under a provider that had no default URL
+        # had no previously-trusted routing to redirect, so treat it like a new
+        # provider introducing a URL rather than a protected routing change.
+        baseline_provider_url = baseline.provider_urls.get(provider_id)
+        if previous_url is None and baseline_provider_url is None:
+            continue
+        changes.append(
+            ApiUrlChange(
+                kind="Model override",
+                provider_id=provider_id,
+                model_id=model_id,
+                previous_url=previous_url,
+                current_url=current_url,
+            ),
+        )
 
     return changes
 

@@ -88,7 +88,7 @@ def test_provider_url_add_and_remove_require_approval(tmp_path: Path) -> None:
 def test_model_override_url_changes_require_approval(tmp_path: Path) -> None:
     baseline_db = _write_baseline_db(
         tmp_path,
-        providers={"known": None},
+        providers={"known": "https://known.example/v1"},
         model_urls={
             ("known", "changed"): "https://old.example/v1",
             ("known", "removed"): "https://removed.example/v1",
@@ -98,6 +98,7 @@ def test_model_override_url_changes_require_approval(tmp_path: Path) -> None:
         tmp_path,
         {
             "known": _provider(
+                api="https://known.example/v1",
                 models={
                     "added": _model(api="https://added.example/v1"),
                     "changed": _model(api="https://new.example/v1"),
@@ -136,6 +137,45 @@ def test_model_override_url_changes_require_approval(tmp_path: Path) -> None:
     assert "<code>added</code>" in markdown
     assert "<code>changed</code>" in markdown
     assert "<code>removed</code>" in markdown
+
+
+def test_new_model_override_under_url_less_provider_is_allowed(
+    tmp_path: Path,
+) -> None:
+    baseline_db = _write_baseline_db(
+        tmp_path,
+        providers={"known": None},
+        model_urls={("known", "changed"): "https://old.example/v1"},
+    )
+    current_json = _write_current_json(
+        tmp_path,
+        {
+            "known": _provider(
+                models={
+                    "added": _model(api="https://added.example/v1"),
+                    "changed": _model(api="https://new.example/v1"),
+                },
+            ),
+        },
+    )
+
+    payload, markdown = _run_check(tmp_path, baseline_db, current_json)
+
+    # The provider has no default URL, so the brand-new "added" override had no
+    # previously-trusted routing to redirect and must not require approval. The
+    # "changed" override already had a destination, so its change still gates.
+    assert payload["approval_required"] is True
+    assert _changes(payload) == [
+        {
+            "type": "Model override",
+            "provider": "known",
+            "model": "changed",
+            "previous_url": "https://old.example/v1",
+            "current_url": "https://new.example/v1",
+        },
+    ]
+    assert "<code>added</code>" not in markdown
+    assert "<code>changed</code>" in markdown
 
 
 def test_new_provider_urls_do_not_require_approval(tmp_path: Path) -> None:
